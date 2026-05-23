@@ -12,6 +12,8 @@ const (
 	defaultAdminAddr       = ":9090"
 	defaultLogLevel        = "info"
 	defaultShutdownTimeout = 5 * time.Second
+	defaultAdminToken      = "dev-token"
+	defaultStopListPath    = "data/stoplist.json"
 )
 
 type Config struct {
@@ -20,6 +22,9 @@ type Config struct {
 	AdminAddr       string
 	LogLevel        string
 	ShutdownTimeout time.Duration
+
+	AdminToken   string
+	StopListPath string
 }
 
 func Load() Config {
@@ -29,6 +34,9 @@ func Load() Config {
 		AdminAddr:       getEnv("ADMIN_ADDR", defaultAdminAddr),
 		LogLevel:        getEnv("LOG_LEVEL", defaultLogLevel),
 		ShutdownTimeout: getDurationEnv("SHUTDOWN_TIMEOUT", defaultShutdownTimeout),
+
+		AdminToken:   getEnv("ADMIN_TOKEN", defaultAdminToken),
+		StopListPath: getEnv("STOPLIST_PATH", defaultStopListPath),
 	}
 }
 

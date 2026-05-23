@@ -10,14 +10,14 @@ import (
 )
 
 const (
-	DefaultLimit         = 20
-	MaxLimit             = 100
+	DefaultLimit = 20
+	MaxLimit     = 100
 
 	DefaultWindowSeconds = 300
 )
 
 var (
-	ErrInvalidLimit         = errors.New("limit must be positive")
+	ErrInvalidLimit        = errors.New("limit must be positive")
 	ErrLimitTooLarge       = errors.New("limit is too large")
 	ErrInvalidWindowSecond = errors.New("window seconds must be positive")
 )

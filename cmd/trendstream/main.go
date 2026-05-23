@@ -12,10 +12,12 @@ import (
 
 	"github.com/kay-kewl/trendstream/internal/aggregator"
 	"github.com/kay-kewl/trendstream/internal/api"
+	"github.com/kay-kewl/trendstream/internal/auth"
 	"github.com/kay-kewl/trendstream/internal/config"
 	"github.com/kay-kewl/trendstream/internal/httpserver"
 	"github.com/kay-kewl/trendstream/internal/logging"
 	"github.com/kay-kewl/trendstream/internal/snapshot"
+	"github.com/kay-kewl/trendstream/internal/stoplist"
 )
 
 func main() {
@@ -39,6 +41,13 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 
+	stopListStore := stoplist.NewFileStore(cfg.StopListPath)
+
+	stopListService, err := stoplist.NewService(stopListStore)
+	if err != nil {
+		return err
+	}
+
 	initialSnapshot := snapshot.Empty(startedAt)
 	snapshotPublisher := snapshot.NewPublisher(initialSnapshot)
 
@@ -53,6 +62,11 @@ func run(cfg config.Config, logger *slog.Logger) error {
 
 	trendsHandler := api.NewTrendsHandler(snapshotPublisher)
 	trendsHandler.Register(publicMux)
+
+	adminAuth := auth.NewTokenAuth(cfg.AdminToken)
+
+	adminStopListHandler := api.NewAdminStopListHandler(stopListService, adminAuth)
+	adminStopListHandler.Register(adminMux)
 
 	publicServer := httpserver.New(
 		httpserver.ServerConfig{
@@ -83,6 +97,7 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		slog.String("http_addr", cfg.HTTPAddr),
 		slog.String("admin_addr", cfg.AdminAddr),
 		slog.String("log_level", cfg.LogLevel),
+		slog.String("stoplist_path", cfg.StopListPath),
 	)
 
 	signalCh := make(chan os.Signal, 1)
