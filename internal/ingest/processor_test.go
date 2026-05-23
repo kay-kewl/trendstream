@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/burtonjake686/trendstream/internal/aggregator"
-	"github.com/burtonjake686/trendstream/internal/contract"
+	"github.com/kay-kewl/trendstream/internal/aggregator"
+	"github.com/kay-kewl/trendstream/internal/contract"
 )
 
 type fakeStopList struct {

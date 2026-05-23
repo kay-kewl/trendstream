@@ -10,15 +10,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/burtonjake686/trendstream/internal/aggregator"
-	"github.com/burtonjake686/trendstream/internal/api"
-	"github.com/burtonjake686/trendstream/internal/auth"
-	"github.com/burtonjake686/trendstream/internal/config"
-	"github.com/burtonjake686/trendstream/internal/httpserver"
-	"github.com/burtonjake686/trendstream/internal/ingest"
-	"github.com/burtonjake686/trendstream/internal/logging"
-	"github.com/burtonjake686/trendstream/internal/snapshot"
-	"github.com/burtonjake686/trendstream/internal/stoplist"
+	"github.com/kay-kewl/trendstream/internal/aggregator"
+	"github.com/kay-kewl/trendstream/internal/api"
+	"github.com/kay-kewl/trendstream/internal/auth"
+	kafkabroker "github.com/kay-kewl/trendstream/internal/broker/kafka"
+	"github.com/kay-kewl/trendstream/internal/config"
+	"github.com/kay-kewl/trendstream/internal/httpserver"
+	"github.com/kay-kewl/trendstream/internal/ingest"
+	"github.com/kay-kewl/trendstream/internal/logging"
+	"github.com/kay-kewl/trendstream/internal/snapshot"
+	"github.com/kay-kewl/trendstream/internal/stoplist"
 )
 
 func main() {
@@ -93,10 +94,33 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		logger,
 	)
 
-	errCh := make(chan error, 2)
+	var kafkaConsumer *kafkabroker.Consumer
+	if cfg.KafkaEnabled {
+		kafkaConsumer, err = kafkabroker.NewConsumer(
+			kafkabroker.ConsumerConfig{
+				Brokers:  cfg.KafkaBrokers,
+				Topic:    cfg.KafkaTopic,
+				GroupID:  cfg.KafkaGroupID,
+				ClientID: cfg.KafkaClientID,
+			},
+			eventProcessor,
+			logger,
+		)
+		if err != nil {
+			return err
+		}
+
+		defer kafkaConsumer.Close()
+	}
+
+	errCh := make(chan error, 3)
 
 	go serveHTTP(errCh, logger, "public", publicServer)
 	go serveHTTP(errCh, logger, "admin", adminServer)
+
+	if kafkaConsumer != nil {
+		go serveKafka(rootCtx, errCh, logger, kafkaConsumer)
+	}
 
 	logger.Info(
 		"service started",
@@ -105,6 +129,9 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		slog.String("admin_addr", cfg.AdminAddr),
 		slog.String("log_level", cfg.LogLevel),
 		slog.String("stoplist_path", cfg.StopListPath),
+		slog.Bool("kafka_enabled", cfg.KafkaEnabled),
+		slog.String("kafka_topic", cfg.KafkaTopic),
+		slog.String("kafka_group_id", cfg.KafkaGroupID),
 	)
 
 	signalCh := make(chan os.Signal, 1)
@@ -183,6 +210,24 @@ func serveHTTP(errCh chan<- error, logger *slog.Logger, name string, server *htt
 	}
 
 	errCh <- err
+}
+
+func serveKafka(
+	ctx context.Context,
+	errCh chan<- error,
+	logger *slog.Logger,
+	consumer *kafkabroker.Consumer,
+) {
+	if err := consumer.Run(ctx); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+
+		errCh <- err
+		return
+	}
+
+	logger.Info("kafka consumer stopped")
 }
 
 func shutdownServers(ctx context.Context, logger *slog.Logger, servers ...*http.Server) error {

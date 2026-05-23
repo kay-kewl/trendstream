@@ -3,7 +3,7 @@ package ingest
 import (
 	"net/http"
 
-	"github.com/burtonjake686/trendstream/internal/contract"
+	"github.com/kay-kewl/trendstream/internal/contract"
 )
 
 type HTTPProcessor struct {

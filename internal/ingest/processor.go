@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/burtonjake686/trendstream/internal/aggregator"
-	"github.com/burtonjake686/trendstream/internal/contract"
-	"github.com/burtonjake686/trendstream/internal/normalize"
+	"github.com/kay-kewl/trendstream/internal/aggregator"
+	"github.com/kay-kewl/trendstream/internal/contract"
+	"github.com/kay-kewl/trendstream/internal/normalize"
 )
 
 type StopList interface {

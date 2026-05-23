@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/burtonjake686/trendstream/internal/auth"
-	"github.com/burtonjake686/trendstream/internal/contract"
-	"github.com/burtonjake686/trendstream/internal/ingest"
+	"github.com/kay-kewl/trendstream/internal/auth"
+	"github.com/kay-kewl/trendstream/internal/contract"
+	"github.com/kay-kewl/trendstream/internal/ingest"
 )
 
 type fakeAdminEventProcessor struct {
