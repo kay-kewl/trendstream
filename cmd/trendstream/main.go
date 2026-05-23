@@ -10,14 +10,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kay-kewl/trendstream/internal/aggregator"
-	"github.com/kay-kewl/trendstream/internal/api"
-	"github.com/kay-kewl/trendstream/internal/auth"
-	"github.com/kay-kewl/trendstream/internal/config"
-	"github.com/kay-kewl/trendstream/internal/httpserver"
-	"github.com/kay-kewl/trendstream/internal/logging"
-	"github.com/kay-kewl/trendstream/internal/snapshot"
-	"github.com/kay-kewl/trendstream/internal/stoplist"
+	"github.com/burtonjake686/trendstream/internal/aggregator"
+	"github.com/burtonjake686/trendstream/internal/api"
+	"github.com/burtonjake686/trendstream/internal/auth"
+	"github.com/burtonjake686/trendstream/internal/config"
+	"github.com/burtonjake686/trendstream/internal/httpserver"
+	"github.com/burtonjake686/trendstream/internal/ingest"
+	"github.com/burtonjake686/trendstream/internal/logging"
+	"github.com/burtonjake686/trendstream/internal/snapshot"
+	"github.com/burtonjake686/trendstream/internal/stoplist"
 )
 
 func main() {
@@ -48,6 +49,9 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 
+	eventProcessor := ingest.NewProcessor(trendAggregator, stopListService)
+	httpEventProcessor := ingest.NewHTTPProcessor(eventProcessor)
+
 	initialSnapshot := snapshot.Empty(startedAt)
 	snapshotPublisher := snapshot.NewPublisher(initialSnapshot)
 
@@ -67,6 +71,9 @@ func run(cfg config.Config, logger *slog.Logger) error {
 
 	adminStopListHandler := api.NewAdminStopListHandler(stopListService, adminAuth)
 	adminStopListHandler.Register(adminMux)
+
+	adminEventsHandler := api.NewAdminEventsHandler(httpEventProcessor, adminAuth)
+	adminEventsHandler.Register(adminMux)
 
 	publicServer := httpserver.New(
 		httpserver.ServerConfig{
