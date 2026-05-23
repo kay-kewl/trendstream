@@ -18,4 +18,6 @@ coverage.html
 
 *.log
 
+bench/results/
 *.pprof
+*.prof
