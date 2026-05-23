@@ -10,10 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kay-kewl/trendstream/internal/aggregator"
 	"github.com/kay-kewl/trendstream/internal/api"
 	"github.com/kay-kewl/trendstream/internal/config"
 	"github.com/kay-kewl/trendstream/internal/httpserver"
 	"github.com/kay-kewl/trendstream/internal/logging"
+	"github.com/kay-kewl/trendstream/internal/snapshot"
 )
 
 func main() {
@@ -29,12 +31,28 @@ func main() {
 func run(cfg config.Config, logger *slog.Logger) error {
 	startedAt := time.Now().UTC()
 
+	rootCtx, cancelRoot := context.WithCancel(context.Background())
+	defer cancelRoot()
+
+	trendAggregator, err := aggregator.New(aggregator.DefaultConfig())
+	if err != nil {
+		return err
+	}
+
+	initialSnapshot := snapshot.Empty(startedAt)
+	snapshotPublisher := snapshot.NewPublisher(initialSnapshot)
+
+	go refreshSnapshots(rootCtx, logger, trendAggregator, snapshotPublisher)
+
 	publicMux := http.NewServeMux()
 	adminMux := http.NewServeMux()
 
 	healthHandler := api.NewHealthHandler(cfg.ServiceName, startedAt)
 	healthHandler.Register(publicMux)
 	healthHandler.Register(adminMux)
+
+	trendsHandler := api.NewTrendsHandler(snapshotPublisher)
+	trendsHandler.Register(publicMux)
 
 	publicServer := httpserver.New(
 		httpserver.ServerConfig{
@@ -74,11 +92,14 @@ func run(cfg config.Config, logger *slog.Logger) error {
 	case sig := <-signalCh:
 		logger.Info("shutdown signal received", slog.String("signal", sig.String()))
 	case err := <-errCh:
+		cancelRoot()
 		return err
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-	defer cancel()
+	cancelRoot()
+
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancelShutdown()
 
 	if err := shutdownServers(shutdownCtx, logger, publicServer, adminServer); err != nil {
 		return err
@@ -86,6 +107,40 @@ func run(cfg config.Config, logger *slog.Logger) error {
 
 	logger.Info("service stopped gracefully")
 	return nil
+}
+
+func refreshSnapshots(
+	ctx context.Context,
+	logger *slog.Logger,
+	trendAggregator *aggregator.Aggregator,
+	publisher *snapshot.Publisher,
+) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	rebuild := func(now time.Time) {
+		items := trendAggregator.TopAt(snapshot.MaxLimit, now)
+
+		next, err := snapshot.New(items, now, snapshot.DefaultOptions())
+		if err != nil {
+			logger.Error("failed to build trends snapshot", slog.Any("error", err))
+			return
+		}
+
+		publisher.Publish(next)
+	}
+
+	rebuild(time.Now().UTC())
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("snapshot refresher stopped")
+			return
+		case now := <-ticker.C:
+			rebuild(now.UTC())
+		}
+	}
 }
 
 func serveHTTP(errCh chan<- error, logger *slog.Logger, name string, server *http.Server) {
