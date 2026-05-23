@@ -250,3 +250,34 @@ func newTestAggregator(t *testing.T, cfg Config) *Aggregator {
 
 	return aggregator
 }
+
+func TestAggregatorTopFilteredAtReturnsNextValidItems(t *testing.T) {
+	t.Parallel()
+
+	now := fixedNow()
+	aggregator := newTestAggregator(t, Config{
+		ShardCount: 4,
+		Window:     DefaultWindowConfig(),
+	})
+
+	for _, query := range []string{"a", "b", "c", "d"} {
+		result := aggregator.AddAt(Event{
+			Query:      query,
+			OccurredAt: now.Add(-time.Second),
+		}, now)
+		if !result.Accepted {
+			t.Fatalf("expected event to be accepted, got reason %q", result.Reason)
+		}
+	}
+
+	items := aggregator.TopFilteredAt(2, now, func(item Item) bool {
+		return item.Query != "a" && item.Query != "b"
+	})
+
+	want := []Item{
+		{Query: "c", Count: 1},
+		{Query: "d", Count: 1},
+	}
+
+	assertItems(t, items, want)
+}

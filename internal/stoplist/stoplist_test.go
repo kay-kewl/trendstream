@@ -85,3 +85,27 @@ func TestSnapshotReturnsCopy(t *testing.T) {
 		t.Fatalf("external snapshot mutation should not affect stop-list")
 	}
 }
+
+func TestStopListContainsSingleTokenInsideQuery(t *testing.T) {
+	t.Parallel()
+
+	stopList := New([]string{"casino"})
+
+	if !stopList.Contains("best casino online") {
+		t.Fatalf("expected single-token stop-list term to match query token")
+	}
+}
+
+func TestStopListMultiTokenTermDoesNotMatchIndividualTokens(t *testing.T) {
+	t.Parallel()
+
+	stopList := New([]string{"iphone 15"})
+
+	if !stopList.Contains("iphone 15") {
+		t.Fatalf("expected exact multi-token term to match itself")
+	}
+
+	if stopList.Contains("iphone case") {
+		t.Fatalf("multi-token stop-list term should not suppress by individual token")
+	}
+}

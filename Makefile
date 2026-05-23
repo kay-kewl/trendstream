@@ -38,6 +38,14 @@ produce:
 up:
 	docker compose up -d
 
+.PHONY: up-service
+up-service:
+	docker compose --profile service up --build -d
+
+.PHONY: logs-service
+logs-service:
+	docker compose --profile service logs -f trendstream
+
 .PHONY: create-topic
 create-topic:
 	docker exec trendstream-kafka \

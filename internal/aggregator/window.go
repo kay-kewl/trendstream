@@ -186,6 +186,10 @@ func (w *Window) Top(limit int) []Item {
 }
 
 func (w *Window) TopAt(limit int, now time.Time) []Item {
+	return w.TopFilteredAt(limit, now, nil)
+}
+
+func (w *Window) TopFilteredAt(limit int, now time.Time, include func(Item) bool) []Item {
 	if limit <= 0 {
 		return nil
 	}
@@ -198,10 +202,16 @@ func (w *Window) TopAt(limit int, now time.Time) []Item {
 			continue
 		}
 
-		items = append(items, Item{
+		item := Item{
 			Query: query,
 			Count: count,
-		})
+		}
+
+		if include != nil && !include(item) {
+			continue
+		}
+
+		items = append(items, item)
 	}
 
 	sort.Slice(items, func(i, j int) bool {

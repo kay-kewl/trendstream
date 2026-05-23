@@ -7,10 +7,11 @@ services:
     environment:
       KAFKA_NODE_ID: "1"
       KAFKA_PROCESS_ROLES: "broker,controller"
-      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092"
+      KAFKA_LISTENERS: "INTERNAL://:19092,EXTERNAL://:9092,CONTROLLER://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka:19092,EXTERNAL://localhost:9092"
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
       KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
@@ -22,3 +23,36 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+
+  trendstream:
+    profiles: [ "service" ]
+    build: .
+    container_name: trendstream-service
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      SERVICE_NAME: trendstream
+      HTTP_ADDR: ":8080"
+      ADMIN_ADDR: ":9090"
+      LOG_LEVEL: info
+      ADMIN_TOKEN: dev-token
+      STOPLIST_PATH: /data/stoplist.json
+      PPROF_ENABLED: "true"
+      KAFKA_ENABLED: "true"
+      KAFKA_BROKERS: kafka:19092
+      KAFKA_TOPIC: search-events
+      KAFKA_GROUP_ID: trendstream
+      KAFKA_CLIENT_ID: trendstream-compose
+      SHARD_COUNT: "32"
+      MAX_UNIQUE_QUERIES: "1000000"
+      MAX_UNIQUE_QUERIES_PER_BUCKET: "100000"
+      PER_ACTOR_QUERY_LIMIT: "3"
+    volumes:
+      - trendstream-data:/data
+
+volumes:
+  trendstream-data:

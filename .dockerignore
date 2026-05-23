@@ -1,0 +1,14 @@
+.git
+.gitignore
+Dockerfile
+coverage.out
+coverage.html
+*.pprof
+*.prof
+bench/results/
+data/
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode/

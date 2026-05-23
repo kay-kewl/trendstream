@@ -29,10 +29,14 @@ func (s *Shard) AddAt(event Event, now time.Time) AddResult {
 }
 
 func (s *Shard) TopAt(limit int, now time.Time) []Item {
+	return s.TopFilteredAt(limit, now, nil)
+}
+
+func (s *Shard) TopFilteredAt(limit int, now time.Time, include func(Item) bool) []Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.window.TopAt(limit, now)
+	return s.window.TopFilteredAt(limit, now, include)
 }
 
 func (s *Shard) CountAt(query string, now time.Time) int64 {

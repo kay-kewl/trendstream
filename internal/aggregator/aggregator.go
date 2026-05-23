@@ -64,6 +64,10 @@ func (a *Aggregator) Top(limit int) []Item {
 }
 
 func (a *Aggregator) TopAt(limit int, now time.Time) []Item {
+	return a.TopFilteredAt(limit, now, nil)
+}
+
+func (a *Aggregator) TopFilteredAt(limit int, now time.Time, include func(Item) bool) []Item {
 	if limit <= 0 {
 		return nil
 	}
@@ -71,7 +75,7 @@ func (a *Aggregator) TopAt(limit int, now time.Time) []Item {
 	candidates := make([]Item, 0, limit*len(a.shards))
 
 	for _, shard := range a.shards {
-		candidates = append(candidates, shard.TopAt(limit, now)...)
+		candidates = append(candidates, shard.TopFilteredAt(limit, now, include)...)
 	}
 
 	sortItems(candidates)

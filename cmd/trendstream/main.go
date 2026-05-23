@@ -197,7 +197,9 @@ func refreshSnapshots(
 
 	rebuild := func(now time.Time) {
 		startedAt := time.Now()
-		items := trendAggregator.TopAt(snapshot.MaxLimit, now)
+		items := trendAggregator.TopFilteredAt(snapshot.MaxLimit, now, func(item aggregator.Item) bool {
+			return !stopListService.Contains(item.Query)
+		})
 
 		next, err := snapshot.New(items, now, snapshot.DefaultOptions())
 		if err != nil {
@@ -227,6 +229,23 @@ func refreshSnapshots(
 			rebuild(now.UTC())
 		}
 	}
+}
+
+func filterStopListedItems(items []aggregator.Item, stopListService *stoplist.Service) []aggregator.Item {
+	if len(items) == 0 || stopListService == nil {
+		return items
+	}
+
+	filtered := items[:0]
+	for _, item := range items {
+		if stopListService.Contains(item.Query) {
+			continue
+		}
+
+		filtered = append(filtered, item)
+	}
+
+	return filtered
 }
 
 func serveHTTP(errCh chan<- error, logger *slog.Logger, name string, server *http.Server) {

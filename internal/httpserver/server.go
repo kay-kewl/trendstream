@@ -17,7 +17,7 @@ func New(cfg ServerConfig, handler http.Handler, logger *slog.Logger) *http.Serv
 		Handler:           recoverMiddleware(logger, handler),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		WriteTimeout:      120 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
 }
