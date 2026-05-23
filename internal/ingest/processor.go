@@ -8,6 +8,7 @@ import (
 	"github.com/kay-kewl/trendstream/internal/aggregator"
 	"github.com/kay-kewl/trendstream/internal/contract"
 	"github.com/kay-kewl/trendstream/internal/normalize"
+	"github.com/kay-kewl/trendstream/internal/privacy"
 )
 
 type StopList interface {
@@ -20,6 +21,7 @@ const (
 	ReasonNone                   Reason = ""
 	ReasonInvalidEvent           Reason = "invalid_event"
 	ReasonEmptyQuery             Reason = "empty_query"
+	ReasonPrivacyFilter          Reason = "privacy_filter"
 	ReasonStopList               Reason = "stoplist"
 	ReasonBot                    Reason = "bot"
 	ReasonTooOld                 Reason = "too_old"
@@ -75,6 +77,14 @@ func (p *Processor) ProcessAt(_ context.Context, event contract.SearchEvent, now
 		return p.finish(Result{
 			Accepted: false,
 			Reason:   ReasonEmptyQuery,
+		})
+	}
+
+	if privacy.ContainsSensitiveData(query) {
+		return p.finish(Result{
+			Accepted: false,
+			Reason:   ReasonPrivacyFilter,
+			Query:    query,
 		})
 	}
 

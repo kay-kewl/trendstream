@@ -262,3 +262,95 @@ func TestProcessorRejectsActorQueryLimit(t *testing.T) {
 		t.Fatalf("reason mismatch: got %q, want %q", result.Reason, ReasonActorQueryLimit)
 	}
 }
+
+func TestProcessorRejectsSensitiveEmailQuery(t *testing.T) {
+	t.Parallel()
+
+	now := fixedProcessorTime()
+	processor := newTestProcessor(t, fakeStopList{})
+
+	event := validSearchEvent(now)
+	event.Query = "john.doe@example.com"
+
+	result := processor.ProcessAt(context.Background(), event, now)
+
+	if result.Accepted {
+		t.Fatalf("expected sensitive email query to be rejected")
+	}
+
+	if result.Reason != ReasonPrivacyFilter {
+		t.Fatalf("reason mismatch: got %q, want %q", result.Reason, ReasonPrivacyFilter)
+	}
+
+	if result.Query != "john.doe@example.com" {
+		t.Fatalf("query mismatch: got %q, want %q", result.Query, "john.doe@example.com")
+	}
+}
+
+func TestProcessorRejectsSensitivePhoneQuery(t *testing.T) {
+	t.Parallel()
+
+	now := fixedProcessorTime()
+	processor := newTestProcessor(t, fakeStopList{})
+
+	event := validSearchEvent(now)
+	event.Query = "+7 999 123 45 67"
+
+	result := processor.ProcessAt(context.Background(), event, now)
+
+	if result.Accepted {
+		t.Fatalf("expected sensitive phone query to be rejected")
+	}
+
+	if result.Reason != ReasonPrivacyFilter {
+		t.Fatalf("reason mismatch: got %q, want %q", result.Reason, ReasonPrivacyFilter)
+	}
+
+	if result.Query != "+7 999 123 45 67" {
+		t.Fatalf("query mismatch: got %q, want %q", result.Query, "+7 999 123 45 67")
+	}
+}
+
+func TestProcessorRejectsSensitiveCardLikeQuery(t *testing.T) {
+	t.Parallel()
+
+	now := fixedProcessorTime()
+	processor := newTestProcessor(t, fakeStopList{})
+
+	event := validSearchEvent(now)
+	event.Query = "4111 1111 1111 1111"
+
+	result := processor.ProcessAt(context.Background(), event, now)
+
+	if result.Accepted {
+		t.Fatalf("expected sensitive card-like query to be rejected")
+	}
+
+	if result.Reason != ReasonPrivacyFilter {
+		t.Fatalf("reason mismatch: got %q, want %q", result.Reason, ReasonPrivacyFilter)
+	}
+
+	if result.Query != "4111 1111 1111 1111" {
+		t.Fatalf("query mismatch: got %q, want %q", result.Query, "4111 1111 1111 1111")
+	}
+}
+
+func TestProcessorAllowsRegularProductQueryAfterPrivacyFilter(t *testing.T) {
+	t.Parallel()
+
+	now := fixedProcessorTime()
+	processor := newTestProcessor(t, fakeStopList{})
+
+	event := validSearchEvent(now)
+	event.Query = "Samsung Galaxy S23 256GB"
+
+	result := processor.ProcessAt(context.Background(), event, now)
+
+	if !result.Accepted {
+		t.Fatalf("expected regular product query to be accepted, got reason %q", result.Reason)
+	}
+
+	if result.Query != "samsung galaxy s23 256gb" {
+		t.Fatalf("query mismatch: got %q, want %q", result.Query, "samsung galaxy s23 256gb")
+	}
+}
