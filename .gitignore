@@ -1,0 +1,17 @@
+/bin/
+/dist/
+/tmp/
+*.out
+*.test
+
+coverage.out
+coverage.html
+
+.env
+.env.*
+!.env.example
+
+.DS_Store
+.vscode/
+
+*.log
