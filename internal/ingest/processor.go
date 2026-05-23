@@ -36,15 +36,25 @@ type Result struct {
 	Count    int64  `json:"count,omitempty"`
 }
 
+type Observer interface {
+	ObserveIngestResult(result Result)
+}
+
 type Processor struct {
 	aggregator *aggregator.Aggregator
 	stopList   StopList
+	observer   Observer
 }
 
 func NewProcessor(aggregator *aggregator.Aggregator, stopList StopList) *Processor {
+	return NewProcessorWithObserver(aggregator, stopList, nil)
+}
+
+func NewProcessorWithObserver(aggregator *aggregator.Aggregator, stopList StopList, observer Observer) *Processor {
 	return &Processor{
 		aggregator: aggregator,
 		stopList:   stopList,
+		observer:   observer,
 	}
 }
 
@@ -54,34 +64,34 @@ func (p *Processor) Process(ctx context.Context, event contract.SearchEvent) Res
 
 func (p *Processor) ProcessAt(_ context.Context, event contract.SearchEvent, now time.Time) Result {
 	if err := contract.ValidateAt(event, now); err != nil {
-		return Result{
+		return p.finish(Result{
 			Accepted: false,
 			Reason:   ReasonInvalidEvent,
-		}
+		})
 	}
 
 	query, ok := normalize.Query(event.Query)
 	if !ok {
-		return Result{
+		return p.finish(Result{
 			Accepted: false,
 			Reason:   ReasonEmptyQuery,
-		}
+		})
 	}
 
 	if event.IsBot {
-		return Result{
+		return p.finish(Result{
 			Accepted: false,
 			Reason:   ReasonBot,
 			Query:    query,
-		}
+		})
 	}
 
 	if p.stopList != nil && p.stopList.Contains(query) {
-		return Result{
+		return p.finish(Result{
 			Accepted: false,
 			Reason:   ReasonStopList,
 			Query:    query,
-		}
+		})
 	}
 
 	addResult := p.aggregator.AddAt(aggregator.Event{
@@ -91,18 +101,26 @@ func (p *Processor) ProcessAt(_ context.Context, event contract.SearchEvent, now
 	}, now)
 
 	if !addResult.Accepted {
-		return Result{
+		return p.finish(Result{
 			Accepted: false,
 			Reason:   mapAggregatorDropReason(addResult.Reason),
 			Query:    query,
-		}
+		})
 	}
 
-	return Result{
+	return p.finish(Result{
 		Accepted: true,
 		Query:    query,
 		Count:    p.aggregator.CountAt(query, now),
+	})
+}
+
+func (p *Processor) finish(result Result) Result {
+	if p.observer != nil {
+		p.observer.ObserveIngestResult(result)
 	}
+
+	return result
 }
 
 func mapAggregatorDropReason(reason aggregator.DropReason) Reason {

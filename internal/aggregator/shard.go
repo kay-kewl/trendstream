@@ -55,3 +55,10 @@ func (s *Shard) ActorCountersAt(now time.Time) int {
 
 	return s.window.ActorCountersAt(now)
 }
+
+func (s *Shard) WindowEventsAt(now time.Time) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.window.WindowEventsAt(now)
+}

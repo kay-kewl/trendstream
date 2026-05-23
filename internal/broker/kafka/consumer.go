@@ -15,20 +15,47 @@ type EventProcessor interface {
 	Process(ctx context.Context, event contract.SearchEvent) ingest.Result
 }
 
+type ConsumerObserver interface {
+	ObserveKafkaRecordsPolled(count int)
+	ObserveKafkaRecordsCommitted(count int)
+	ObserveKafkaFetchError(topic string, partition int32)
+	ObserveKafkaCommitError()
+	ObserveKafkaDecodeError()
+}
+
+type noopConsumerObserver struct{}
+
+func (noopConsumerObserver) ObserveKafkaRecordsPolled(count int)                  {}
+func (noopConsumerObserver) ObserveKafkaRecordsCommitted(count int)               {}
+func (noopConsumerObserver) ObserveKafkaFetchError(topic string, partition int32) {}
+func (noopConsumerObserver) ObserveKafkaCommitError()                             {}
+func (noopConsumerObserver) ObserveKafkaDecodeError()                             {}
+
 type Consumer struct {
 	client    *kgo.Client
 	cfg       ConsumerConfig
 	processor EventProcessor
 	logger    *slog.Logger
+	observer  ConsumerObserver
 }
 
-func NewConsumer(cfg ConsumerConfig, processor EventProcessor, logger *slog.Logger) (*Consumer, error) {
+func NewConsumer(
+	cfg ConsumerConfig,
+	processor EventProcessor,
+	logger *slog.Logger,
+	observers ...ConsumerObserver,
+) (*Consumer, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
 	if cfg.ClientID == "" {
 		cfg.ClientID = "trendstream"
+	}
+
+	observer := ConsumerObserver(noopConsumerObserver{})
+	if len(observers) > 0 && observers[0] != nil {
+		observer = observers[0]
 	}
 
 	client, err := kgo.NewClient(
@@ -47,6 +74,7 @@ func NewConsumer(cfg ConsumerConfig, processor EventProcessor, logger *slog.Logg
 		cfg:       cfg,
 		processor: processor,
 		logger:    logger,
+		observer:  observer,
 	}, nil
 }
 
@@ -68,8 +96,10 @@ func (c *Consumer) Run(ctx context.Context) error {
 			return nil
 		}
 
-		if errors := fetches.Errors(); len(errors) > 0 {
-			for _, fetchErr := range errors {
+		if fetchErrors := fetches.Errors(); len(fetchErrors) > 0 {
+			for _, fetchErr := range fetchErrors {
+				c.observer.ObserveKafkaFetchError(fetchErr.Topic, fetchErr.Partition)
+
 				c.logger.Error(
 					"kafka fetch error",
 					slog.String("topic", fetchErr.Topic),
@@ -82,11 +112,15 @@ func (c *Consumer) Run(ctx context.Context) error {
 		}
 
 		recordsToCommit := make([]*kgo.Record, 0)
+		recordsPolled := 0
 
 		fetches.EachRecord(func(record *kgo.Record) {
+			recordsPolled++
 			c.handleRecord(ctx, record)
 			recordsToCommit = append(recordsToCommit, record)
 		})
+
+		c.observer.ObserveKafkaRecordsPolled(recordsPolled)
 
 		if len(recordsToCommit) == 0 {
 			continue
@@ -97,8 +131,12 @@ func (c *Consumer) Run(ctx context.Context) error {
 				return nil
 			}
 
+			c.observer.ObserveKafkaCommitError()
 			c.logger.Error("failed to commit kafka records", slog.Any("error", err))
+			continue
 		}
+
+		c.observer.ObserveKafkaRecordsCommitted(len(recordsToCommit))
 	}
 }
 
@@ -109,6 +147,7 @@ func (c *Consumer) Close() {
 func (c *Consumer) handleRecord(ctx context.Context, record *kgo.Record) {
 	event, err := DecodeSearchEvent(record.Value)
 	if err != nil {
+		c.observer.ObserveKafkaDecodeError()
 		c.logger.Warn(
 			"dropped invalid kafka message",
 			slog.String("topic", record.Topic),

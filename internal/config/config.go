@@ -15,6 +15,7 @@ const (
 	defaultShutdownTimeout = 5 * time.Second
 	defaultAdminToken      = "dev-token"
 	defaultStopListPath    = "data/stoplist.json"
+	defaultPPROFEnabled    = false
 
 	defaultKafkaEnabled  = false
 	defaultKafkaBrokers  = "localhost:9092"
@@ -37,6 +38,7 @@ type Config struct {
 
 	AdminToken   string
 	StopListPath string
+	PPROFEnabled bool
 
 	KafkaEnabled  bool
 	KafkaBrokers  []string
@@ -60,6 +62,7 @@ func Load() Config {
 
 		AdminToken:   getEnv("ADMIN_TOKEN", defaultAdminToken),
 		StopListPath: getEnv("STOPLIST_PATH", defaultStopListPath),
+		PPROFEnabled: getBoolEnv("PPROF_ENABLED", defaultPPROFEnabled),
 
 		KafkaEnabled:  getBoolEnv("KAFKA_ENABLED", defaultKafkaEnabled),
 		KafkaBrokers:  getCSVEnv("KAFKA_BROKERS", defaultKafkaBrokers),

@@ -71,3 +71,7 @@ tidy:
 
 .PHONY: check
 check: fmt tidy test
+
+.PHONY: metrics
+metrics:
+	curl -s http://localhost:9090/metrics | head -40

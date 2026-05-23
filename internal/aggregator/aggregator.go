@@ -107,6 +107,16 @@ func (a *Aggregator) ActorCountersAt(now time.Time) int {
 	return total
 }
 
+func (a *Aggregator) WindowEventsAt(now time.Time) int64 {
+	var total int64
+
+	for _, shard := range a.shards {
+		total += shard.WindowEventsAt(now)
+	}
+
+	return total
+}
+
 func (a *Aggregator) ShardCount() int {
 	return len(a.shards)
 }

@@ -246,6 +246,19 @@ func (w *Window) ActorCountersAt(now time.Time) int {
 	return len(w.actorTotals)
 }
 
+func (w *Window) WindowEventsAt(now time.Time) int64 {
+	w.ExpireAt(now.UTC())
+
+	var total int64
+	for _, count := range w.totals {
+		if count > 0 {
+			total += count
+		}
+	}
+
+	return total
+}
+
 func (w *Window) ExpireAt(now time.Time) {
 	minBucketID := w.minBucketID(now.UTC())
 
