@@ -97,6 +97,16 @@ func (a *Aggregator) UniqueQueriesAt(now time.Time) int {
 	return total
 }
 
+func (a *Aggregator) ActorCountersAt(now time.Time) int {
+	total := 0
+
+	for _, shard := range a.shards {
+		total += shard.ActorCountersAt(now)
+	}
+
+	return total
+}
+
 func (a *Aggregator) ShardCount() int {
 	return len(a.shards)
 }
@@ -136,6 +146,18 @@ func withDefaultAggregatorConfig(cfg Config) Config {
 
 	if cfg.Window.MaxFutureSkew == 0 {
 		cfg.Window.MaxFutureSkew = defaults.Window.MaxFutureSkew
+	}
+
+	if cfg.Window.MaxUniqueQueries == 0 {
+		cfg.Window.MaxUniqueQueries = defaults.Window.MaxUniqueQueries
+	}
+
+	if cfg.Window.MaxUniqueQueriesPerBucket == 0 {
+		cfg.Window.MaxUniqueQueriesPerBucket = defaults.Window.MaxUniqueQueriesPerBucket
+	}
+
+	if cfg.Window.PerActorQueryLimit == 0 {
+		cfg.Window.PerActorQueryLimit = defaults.Window.PerActorQueryLimit
 	}
 
 	return cfg

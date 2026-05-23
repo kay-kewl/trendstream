@@ -327,3 +327,199 @@ func assertItems(t *testing.T, got []Item, want []Item) {
 		}
 	}
 }
+
+func TestWindowRejectsWhenGlobalCardinalityLimitIsReached(t *testing.T) {
+	t.Parallel()
+
+	now := fixedNow()
+
+	window, err := NewWindow(WindowConfig{
+		WindowSize:                DefaultWindowSize,
+		BucketSize:                DefaultBucketSize,
+		MaxFutureSkew:             DefaultMaxFutureSkew,
+		MaxUniqueQueries:          2,
+		MaxUniqueQueriesPerBucket: 100,
+		PerActorQueryLimit:        100,
+	})
+	if err != nil {
+		t.Fatalf("failed to create window: %v", err)
+	}
+
+	for _, query := range []string{"a", "b"} {
+		result := window.AddAt(Event{
+			Query:      query,
+			OccurredAt: now,
+		}, now)
+		if !result.Accepted {
+			t.Fatalf("expected query %q to be accepted, got reason %q", query, result.Reason)
+		}
+	}
+
+	result := window.AddAt(Event{
+		Query:      "c",
+		OccurredAt: now,
+	}, now)
+
+	if result.Accepted {
+		t.Fatalf("expected third unique query to be rejected")
+	}
+
+	if result.Reason != DropReasonCardinalityLimit {
+		t.Fatalf("reason mismatch: got %q, want %q", result.Reason, DropReasonCardinalityLimit)
+	}
+
+	result = window.AddAt(Event{
+		Query:      "a",
+		OccurredAt: now,
+	}, now)
+
+	if !result.Accepted {
+		t.Fatalf("existing query should still be accepted, got reason %q", result.Reason)
+	}
+}
+
+func TestWindowRejectsWhenBucketCardinalityLimitIsReached(t *testing.T) {
+	t.Parallel()
+
+	now := fixedNow()
+
+	window, err := NewWindow(WindowConfig{
+		WindowSize:                DefaultWindowSize,
+		BucketSize:                DefaultBucketSize,
+		MaxFutureSkew:             DefaultMaxFutureSkew,
+		MaxUniqueQueries:          100,
+		MaxUniqueQueriesPerBucket: 2,
+		PerActorQueryLimit:        100,
+	})
+	if err != nil {
+		t.Fatalf("failed to create window: %v", err)
+	}
+
+	for _, query := range []string{"a", "b"} {
+		result := window.AddAt(Event{
+			Query:      query,
+			OccurredAt: now,
+		}, now)
+		if !result.Accepted {
+			t.Fatalf("expected query %q to be accepted, got reason %q", query, result.Reason)
+		}
+	}
+
+	result := window.AddAt(Event{
+		Query:      "c",
+		OccurredAt: now,
+	}, now)
+
+	if result.Accepted {
+		t.Fatalf("expected third unique query in bucket to be rejected")
+	}
+
+	if result.Reason != DropReasonBucketCardinalityLimit {
+		t.Fatalf("reason mismatch: got %q, want %q", result.Reason, DropReasonBucketCardinalityLimit)
+	}
+
+	later := now.Add(time.Second)
+
+	result = window.AddAt(Event{
+		Query:      "c",
+		OccurredAt: later,
+	}, later)
+
+	if !result.Accepted {
+		t.Fatalf("same query should be accepted in another bucket if global limit allows it, got reason %q", result.Reason)
+	}
+}
+
+func TestWindowRejectsWhenPerActorQueryLimitIsReached(t *testing.T) {
+	t.Parallel()
+
+	now := fixedNow()
+
+	window, err := NewWindow(WindowConfig{
+		WindowSize:                DefaultWindowSize,
+		BucketSize:                DefaultBucketSize,
+		MaxFutureSkew:             DefaultMaxFutureSkew,
+		MaxUniqueQueries:          100,
+		MaxUniqueQueriesPerBucket: 100,
+		PerActorQueryLimit:        2,
+	})
+	if err != nil {
+		t.Fatalf("failed to create window: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		result := window.AddAt(Event{
+			Query:      "iphone",
+			OccurredAt: now.Add(time.Duration(i) * time.Second),
+			ActorKey:   "actor-1",
+		}, now)
+		if !result.Accepted {
+			t.Fatalf("expected event %d to be accepted, got reason %q", i, result.Reason)
+		}
+	}
+
+	result := window.AddAt(Event{
+		Query:      "iphone",
+		OccurredAt: now.Add(2 * time.Second),
+		ActorKey:   "actor-1",
+	}, now)
+
+	if result.Accepted {
+		t.Fatalf("expected event over actor cap to be rejected")
+	}
+
+	if result.Reason != DropReasonActorQueryLimit {
+		t.Fatalf("reason mismatch: got %q, want %q", result.Reason, DropReasonActorQueryLimit)
+	}
+
+	result = window.AddAt(Event{
+		Query:      "iphone",
+		OccurredAt: now.Add(3 * time.Second),
+		ActorKey:   "actor-2",
+	}, now)
+
+	if !result.Accepted {
+		t.Fatalf("different actor should be accepted, got reason %q", result.Reason)
+	}
+}
+
+func TestWindowActorCountersExpire(t *testing.T) {
+	t.Parallel()
+
+	now := fixedNow()
+
+	window, err := NewWindow(WindowConfig{
+		WindowSize:                DefaultWindowSize,
+		BucketSize:                DefaultBucketSize,
+		MaxFutureSkew:             DefaultMaxFutureSkew,
+		MaxUniqueQueries:          100,
+		MaxUniqueQueriesPerBucket: 100,
+		PerActorQueryLimit:        2,
+	})
+	if err != nil {
+		t.Fatalf("failed to create window: %v", err)
+	}
+
+	result := window.AddAt(Event{
+		Query:      "iphone",
+		OccurredAt: now.Add(-DefaultWindowSize + time.Second),
+		ActorKey:   "actor-1",
+	}, now)
+	if !result.Accepted {
+		t.Fatalf("expected event to be accepted, got reason %q", result.Reason)
+	}
+
+	if count := window.ActorCountAt("iphone", "actor-1", now); count != 1 {
+		t.Fatalf("actor count mismatch: got %d, want 1", count)
+	}
+
+	later := now.Add(2 * time.Second)
+
+	if count := window.ActorCountAt("iphone", "actor-1", later); count != 0 {
+		t.Fatalf("actor count after expiration mismatch: got %d, want 0", count)
+	}
+
+	if counters := window.ActorCountersAt(later); counters != 0 {
+		t.Fatalf("actor counters after expiration mismatch: got %d, want 0", counters)
+	}
+}

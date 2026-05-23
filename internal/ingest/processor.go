@@ -17,13 +17,16 @@ type StopList interface {
 type Reason string
 
 const (
-	ReasonNone         Reason = ""
-	ReasonInvalidEvent Reason = "invalid_event"
-	ReasonEmptyQuery   Reason = "empty_query"
-	ReasonStopList     Reason = "stoplist"
-	ReasonBot          Reason = "bot"
-	ReasonTooOld       Reason = "too_old"
-	ReasonFromFuture   Reason = "from_future"
+	ReasonNone                   Reason = ""
+	ReasonInvalidEvent           Reason = "invalid_event"
+	ReasonEmptyQuery             Reason = "empty_query"
+	ReasonStopList               Reason = "stoplist"
+	ReasonBot                    Reason = "bot"
+	ReasonTooOld                 Reason = "too_old"
+	ReasonFromFuture             Reason = "from_future"
+	ReasonCardinalityLimit       Reason = "cardinality_limit"
+	ReasonBucketCardinalityLimit Reason = "bucket_cardinality_limit"
+	ReasonActorQueryLimit        Reason = "actor_query_limit"
 )
 
 type Result struct {
@@ -110,6 +113,12 @@ func mapAggregatorDropReason(reason aggregator.DropReason) Reason {
 		return ReasonTooOld
 	case aggregator.DropReasonFromFuture:
 		return ReasonFromFuture
+	case aggregator.DropReasonCardinalityLimit:
+		return ReasonCardinalityLimit
+	case aggregator.DropReasonBucketCardinalityLimit:
+		return ReasonBucketCardinalityLimit
+	case aggregator.DropReasonActorQueryLimit:
+		return ReasonActorQueryLimit
 	default:
 		return ReasonInvalidEvent
 	}

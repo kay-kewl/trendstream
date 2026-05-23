@@ -215,3 +215,50 @@ func newTestProcessor(t *testing.T, stopList StopList) *Processor {
 
 	return NewProcessor(trendAggregator, stopList)
 }
+
+func TestProcessorRejectsActorQueryLimit(t *testing.T) {
+	t.Parallel()
+
+	now := fixedProcessorTime()
+
+	trendAggregator, err := aggregator.New(aggregator.Config{
+		ShardCount: 4,
+		Window: aggregator.WindowConfig{
+			WindowSize:                aggregator.DefaultWindowSize,
+			BucketSize:                aggregator.DefaultBucketSize,
+			MaxFutureSkew:             aggregator.DefaultMaxFutureSkew,
+			MaxUniqueQueries:          100,
+			MaxUniqueQueriesPerBucket: 100,
+			PerActorQueryLimit:        2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create aggregator: %v", err)
+	}
+
+	processor := NewProcessor(trendAggregator, fakeStopList{})
+
+	for i := 0; i < 2; i++ {
+		event := validSearchEvent(now)
+		event.EventID = "event-accepted-" + string(rune('0'+i))
+		event.UserIDHash = "same-actor"
+
+		result := processor.ProcessAt(context.Background(), event, now)
+		if !result.Accepted {
+			t.Fatalf("expected event %d to be accepted, got reason %q", i, result.Reason)
+		}
+	}
+
+	event := validSearchEvent(now)
+	event.EventID = "event-rejected"
+	event.UserIDHash = "same-actor"
+
+	result := processor.ProcessAt(context.Background(), event, now)
+	if result.Accepted {
+		t.Fatalf("expected event over actor limit to be rejected")
+	}
+
+	if result.Reason != ReasonActorQueryLimit {
+		t.Fatalf("reason mismatch: got %q, want %q", result.Reason, ReasonActorQueryLimit)
+	}
+}

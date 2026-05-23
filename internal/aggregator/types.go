@@ -16,10 +16,13 @@ type Item struct {
 type DropReason string
 
 const (
-	DropReasonNone       DropReason = ""
-	DropReasonEmptyQuery DropReason = "empty_query"
-	DropReasonTooOld     DropReason = "too_old"
-	DropReasonFromFuture DropReason = "from_future"
+	DropReasonNone                   DropReason = ""
+	DropReasonEmptyQuery             DropReason = "empty_query"
+	DropReasonTooOld                 DropReason = "too_old"
+	DropReasonFromFuture             DropReason = "from_future"
+	DropReasonCardinalityLimit       DropReason = "cardinality_limit"
+	DropReasonBucketCardinalityLimit DropReason = "bucket_cardinality_limit"
+	DropReasonActorQueryLimit        DropReason = "actor_query_limit"
 )
 
 type AddResult struct {

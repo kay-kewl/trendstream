@@ -8,33 +8,49 @@ import (
 )
 
 const (
-	DefaultWindowSize    = 5 * time.Minute
-	DefaultBucketSize    = time.Second
-	DefaultMaxFutureSkew = 10 * time.Second
+	DefaultWindowSize                = 5 * time.Minute
+	DefaultBucketSize                = time.Second
+	DefaultMaxFutureSkew             = 10 * time.Second
+	DefaultMaxUniqueQueries          = 1_000_000
+	DefaultMaxUniqueQueriesPerBucket = 100_000
+	DefaultPerActorQueryLimit        = int64(3)
 )
 
 type WindowConfig struct {
-	WindowSize    time.Duration
-	BucketSize    time.Duration
-	MaxFutureSkew time.Duration
+	WindowSize                time.Duration
+	BucketSize                time.Duration
+	MaxFutureSkew             time.Duration
+	MaxUniqueQueries          int
+	MaxUniqueQueriesPerBucket int
+	PerActorQueryLimit        int64
+}
+
+type actorQueryKey struct {
+	Query    string
+	ActorKey string
 }
 
 type bucket struct {
-	id     int64
-	counts map[string]int64
+	id          int64
+	counts      map[string]int64
+	actorCounts map[actorQueryKey]int64
 }
 
 type Window struct {
-	cfg     WindowConfig
-	buckets []bucket
-	totals  map[string]int64
+	cfg         WindowConfig
+	buckets     []bucket
+	totals      map[string]int64
+	actorTotals map[actorQueryKey]int64
 }
 
 func DefaultWindowConfig() WindowConfig {
 	return WindowConfig{
-		WindowSize:    DefaultWindowSize,
-		BucketSize:    DefaultBucketSize,
-		MaxFutureSkew: DefaultMaxFutureSkew,
+		WindowSize:                DefaultWindowSize,
+		BucketSize:                DefaultBucketSize,
+		MaxFutureSkew:             DefaultMaxFutureSkew,
+		MaxUniqueQueries:          DefaultMaxUniqueQueries,
+		MaxUniqueQueriesPerBucket: DefaultMaxUniqueQueriesPerBucket,
+		PerActorQueryLimit:        DefaultPerActorQueryLimit,
 	}
 }
 
@@ -57,12 +73,25 @@ func NewWindow(cfg WindowConfig) (*Window, error) {
 		return nil, errors.New("window size must be divisible by bucket size")
 	}
 
+	if cfg.MaxUniqueQueries < 0 {
+		return nil, errors.New("max unique queries must be non-negative")
+	}
+
+	if cfg.MaxUniqueQueriesPerBucket < 0 {
+		return nil, errors.New("max unique queries per bucket must be non-negative")
+	}
+
+	if cfg.PerActorQueryLimit < 0 {
+		return nil, errors.New("per actor query limit must be non-negative")
+	}
+
 	bucketCount := int(cfg.WindowSize/cfg.BucketSize) + 1
 
 	return &Window{
-		cfg:     cfg,
-		buckets: make([]bucket, bucketCount),
-		totals:  make(map[string]int64),
+		cfg:         cfg,
+		buckets:     make([]bucket, bucketCount),
+		totals:      make(map[string]int64),
+		actorTotals: make(map[actorQueryKey]int64),
 	}, nil
 }
 
@@ -105,10 +134,46 @@ func (w *Window) AddAt(event Event, now time.Time) AddResult {
 		}
 	}
 
+	actorKey := strings.TrimSpace(event.ActorKey)
+	actorKeyStruct := actorQueryKey{
+		Query:    query,
+		ActorKey: actorKey,
+	}
+
+	if actorKey != "" && w.cfg.PerActorQueryLimit > 0 {
+		if w.actorTotals[actorKeyStruct] >= w.cfg.PerActorQueryLimit {
+			return AddResult{
+				Accepted: false,
+				Reason:   DropReasonActorQueryLimit,
+			}
+		}
+	}
+
+	if w.totals[query] == 0 && w.cfg.MaxUniqueQueries > 0 && len(w.totals) >= w.cfg.MaxUniqueQueries {
+		return AddResult{
+			Accepted: false,
+			Reason:   DropReasonCardinalityLimit,
+		}
+	}
+
 	targetBucket := w.ensureBucket(eventBucketID)
+
+	if targetBucket.counts[query] == 0 &&
+		w.cfg.MaxUniqueQueriesPerBucket > 0 &&
+		len(targetBucket.counts) >= w.cfg.MaxUniqueQueriesPerBucket {
+		return AddResult{
+			Accepted: false,
+			Reason:   DropReasonBucketCardinalityLimit,
+		}
+	}
 
 	targetBucket.counts[query]++
 	w.totals[query]++
+
+	if actorKey != "" && w.cfg.PerActorQueryLimit > 0 {
+		targetBucket.actorCounts[actorKeyStruct]++
+		w.actorTotals[actorKeyStruct]++
+	}
 
 	return AddResult{
 		Accepted: true,
@@ -160,10 +225,25 @@ func (w *Window) CountAt(query string, now time.Time) int64 {
 	return w.totals[query]
 }
 
+func (w *Window) ActorCountAt(query string, actorKey string, now time.Time) int64 {
+	w.ExpireAt(now.UTC())
+
+	return w.actorTotals[actorQueryKey{
+		Query:    query,
+		ActorKey: actorKey,
+	}]
+}
+
 func (w *Window) UniqueQueriesAt(now time.Time) int {
 	w.ExpireAt(now.UTC())
 
 	return len(w.totals)
+}
+
+func (w *Window) ActorCountersAt(now time.Time) int {
+	w.ExpireAt(now.UTC())
+
+	return len(w.actorTotals)
 }
 
 func (w *Window) ExpireAt(now time.Time) {
@@ -181,6 +261,7 @@ func (w *Window) ExpireAt(now time.Time) {
 
 		w.subtractBucket(current)
 		clear(current.counts)
+		clear(current.actorCounts)
 	}
 }
 
@@ -191,6 +272,7 @@ func (w *Window) ensureBucket(bucketID int64) *bucket {
 	if current.counts == nil {
 		current.id = bucketID
 		current.counts = make(map[string]int64)
+		current.actorCounts = make(map[actorQueryKey]int64)
 
 		return current
 	}
@@ -198,6 +280,7 @@ func (w *Window) ensureBucket(bucketID int64) *bucket {
 	if current.id != bucketID {
 		w.subtractBucket(current)
 		clear(current.counts)
+		clear(current.actorCounts)
 		current.id = bucketID
 	}
 
@@ -209,6 +292,13 @@ func (w *Window) subtractBucket(current *bucket) {
 		w.totals[query] -= count
 		if w.totals[query] <= 0 {
 			delete(w.totals, query)
+		}
+	}
+
+	for key, count := range current.actorCounts {
+		w.actorTotals[key] -= count
+		if w.actorTotals[key] <= 0 {
+			delete(w.actorTotals, key)
 		}
 	}
 }
@@ -243,6 +333,18 @@ func withDefaults(cfg WindowConfig) WindowConfig {
 
 	if cfg.MaxFutureSkew == 0 {
 		cfg.MaxFutureSkew = defaults.MaxFutureSkew
+	}
+
+	if cfg.MaxUniqueQueries == 0 {
+		cfg.MaxUniqueQueries = defaults.MaxUniqueQueries
+	}
+
+	if cfg.MaxUniqueQueriesPerBucket == 0 {
+		cfg.MaxUniqueQueriesPerBucket = defaults.MaxUniqueQueriesPerBucket
+	}
+
+	if cfg.PerActorQueryLimit == 0 {
+		cfg.PerActorQueryLimit = defaults.PerActorQueryLimit
 	}
 
 	return cfg

@@ -48,3 +48,10 @@ func (s *Shard) UniqueQueriesAt(now time.Time) int {
 
 	return s.window.UniqueQueriesAt(now)
 }
+
+func (s *Shard) ActorCountersAt(now time.Time) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.window.ActorCountersAt(now)
+}

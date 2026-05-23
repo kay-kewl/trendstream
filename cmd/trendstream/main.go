@@ -38,7 +38,13 @@ func run(cfg config.Config, logger *slog.Logger) error {
 	rootCtx, cancelRoot := context.WithCancel(context.Background())
 	defer cancelRoot()
 
-	trendAggregator, err := aggregator.New(aggregator.DefaultConfig())
+	aggregatorConfig := aggregator.DefaultConfig()
+	aggregatorConfig.ShardCount = cfg.ShardCount
+	aggregatorConfig.Window.MaxUniqueQueries = cfg.MaxUniqueQueries
+	aggregatorConfig.Window.MaxUniqueQueriesPerBucket = cfg.MaxUniqueQueriesPerBucket
+	aggregatorConfig.Window.PerActorQueryLimit = cfg.PerActorQueryLimit
+
+	trendAggregator, err := aggregator.New(aggregatorConfig)
 	if err != nil {
 		return err
 	}
@@ -132,6 +138,10 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		slog.Bool("kafka_enabled", cfg.KafkaEnabled),
 		slog.String("kafka_topic", cfg.KafkaTopic),
 		slog.String("kafka_group_id", cfg.KafkaGroupID),
+		slog.Int("shard_count", cfg.ShardCount),
+		slog.Int("max_unique_queries", cfg.MaxUniqueQueries),
+		slog.Int("max_unique_queries_per_bucket", cfg.MaxUniqueQueriesPerBucket),
+		slog.Int64("per_actor_query_limit", cfg.PerActorQueryLimit),
 	)
 
 	signalCh := make(chan os.Signal, 1)

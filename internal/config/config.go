@@ -21,6 +21,11 @@ const (
 	defaultKafkaTopic    = "search-events"
 	defaultKafkaGroupID  = "trendstream"
 	defaultKafkaClientID = "trendstream-local"
+
+	defaultShardCount                = 32
+	defaultMaxUniqueQueries          = 1_000_000
+	defaultMaxUniqueQueriesPerBucket = 100_000
+	defaultPerActorQueryLimit        = 3
 )
 
 type Config struct {
@@ -38,6 +43,11 @@ type Config struct {
 	KafkaTopic    string
 	KafkaGroupID  string
 	KafkaClientID string
+
+	ShardCount                int
+	MaxUniqueQueries          int
+	MaxUniqueQueriesPerBucket int
+	PerActorQueryLimit        int64
 }
 
 func Load() Config {
@@ -56,6 +66,11 @@ func Load() Config {
 		KafkaTopic:    getEnv("KAFKA_TOPIC", defaultKafkaTopic),
 		KafkaGroupID:  getEnv("KAFKA_GROUP_ID", defaultKafkaGroupID),
 		KafkaClientID: getEnv("KAFKA_CLIENT_ID", defaultKafkaClientID),
+
+		ShardCount:                getIntEnv("SHARD_COUNT", defaultShardCount),
+		MaxUniqueQueries:          getIntEnv("MAX_UNIQUE_QUERIES", defaultMaxUniqueQueries),
+		MaxUniqueQueriesPerBucket: getIntEnv("MAX_UNIQUE_QUERIES_PER_BUCKET", defaultMaxUniqueQueriesPerBucket),
+		PerActorQueryLimit:        int64(getIntEnv("PER_ACTOR_QUERY_LIMIT", defaultPerActorQueryLimit)),
 	}
 }
 
@@ -93,6 +108,20 @@ func getBoolEnv(key string, fallback bool) bool {
 	}
 
 	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
+}
+
+func getIntEnv(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return fallback
 	}
